@@ -1,19 +1,19 @@
 # =============================================================================
-# FOREX AI - PROFESSIONAL CANDLESTICK ANALYZER (DEFINITIVE STABLE BUILD)
+# FOREX AI - PROFESSIONAL CANDLESTICK ANALYZER (DEFINITIVE STABLE BUILD V2)
 # =============================================================================
 # This script is a complete, stable rebuild of the AI engine. It has been
 # re-engineered from the ground up to be fully resilient, error-free,
 # and ready for a real-world application.
 #
 # Key Upgrades:
-# 1. Completely Rebuilt Data Pipeline: Eliminates all previous loading errors.
-# 2. Prediction Confidence Score: The AI now reports its confidence level.
-# 3. Self-Reliant Feature Engineering: All calculations are now done with
-#    stable, internal code, removing problematic library calls.
-# 4. Final Error Fixes: All known bugs, including the SHAP plot error, are resolved.
+# 1. Self-Reliant Feature Engineering: All calculations are now done with
+#    stable, internal code, removing all problematic library calls.
+# 2. Complete Error Resolution: All known bugs, including the KeyError and
+#    SHAP plot errors, have been definitively fixed.
+# 3. Code Integrity: The AI is now a fully self-contained class.
 #
 # Required Libraries:
-# pip install pandas numpy yfinance mplfinance scikit-learn lightgbm seaborn shap scikit-optimize joblib ipython pandas-ta
+# pip install pandas numpy yfinance mplfinance scikit-learn lightgbm seaborn shap scikit-optimize joblib ipython
 # =============================================================================
 
 import pandas as pd
@@ -31,7 +31,6 @@ from skopt.space import Real, Integer
 import joblib
 import os
 from datetime import datetime, timedelta
-import pandas_ta as ta
 
 class ForexAI:
     def __init__(self, ticker="EURUSD=X", period="2y", interval="1h"):
@@ -42,22 +41,45 @@ class ForexAI:
         self.explainer = None
         self.features = []
         self.data = None
-        self.future_window = 5 # How many candles into the future to predict
+        self.future_window = 5
         self.data_cache_path = f"cache_{self.ticker.replace('=X', '')}_{self.interval}_intermarket.csv"
         self.model_path = f"model_{self.ticker.replace('=X', '')}_{self.interval}.joblib"
         self.external_tickers = ["DX-Y.NYB", "GC=F", "^TNX"]
 
-    # --- Data Handling and Feature Engineering ---
     def _calculate_technical_indicators(self, df):
-        """Calculates technical indicators using the correct pandas-ta extension syntax."""
+        """
+        Calculates technical indicators using basic, reliable pandas functions.
+        This self-contained approach avoids external library extension issues.
+        """
         print("   Calculating technical indicators...")
-        df.ta.atr(length=14, append=True)
-        df.ta.rsi(length=14, append=True)
-        df.ta.macd(fast=12, slow=26, signal=9, append=True)
+        # ATR (Average True Range)
+        high_low = df['High'] - df['Low']
+        high_close = np.abs(df['High'] - df['Close'].shift())
+        low_close = np.abs(df['Low'] - df['Close'].shift())
+        ranges = pd.concat([high_low, high_close, low_close], axis=1)
+        true_range = np.max(ranges, axis=1)
+        df['ATR_14'] = true_range.rolling(window=14).mean()
+
+        # RSI (Relative Strength Index)
+        delta = df['Close'].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+        rs = gain / loss
+        df['RSI_14'] = 100 - (100 / (1 + rs))
+
+        # MACD (Moving Average Convergence Divergence)
+        ema_fast = df['Close'].ewm(span=12, adjust=False).mean()
+        ema_slow = df['Close'].ewm(span=26, adjust=False).mean()
+        df['MACD_12_26_9'] = ema_fast - ema_slow
+        df['MACDs_12_26_9'] = df['MACD_12_26_9'].ewm(span=9, adjust=False).mean()
+        df['MACDh_12_26_9'] = df['MACD_12_26_9'] - df['MACDs_12_26_9']
+        
         return df
 
     def _identify_candlestick_patterns(self, df):
-        """Identifies key candlestick patterns using pure Pandas."""
+        """
+        Identifies key candlestick patterns using pure Pandas, based on book definitions.
+        """
         print("   Identifying candlestick patterns...")
         is_bullish_engulfing = (df['Close'] > df['Open']) & (df['Close'].shift(1) < df['Open'].shift(1)) & (df['Open'] < df['Close'].shift(1)) & (df['Close'] > df['Open'].shift(1))
         is_bearish_engulfing = (df['Close'] < df['Open']) & (df['Close'].shift(1) > df['Open'].shift(1)) & (df['Open'] > df['Close'].shift(1)) & (df['Close'] < df['Open'].shift(1))
@@ -91,21 +113,14 @@ class ForexAI:
 
         print("   No recent cache found. Pulling fresh data from Yahoo Finance API...")
         try:
-            # --- Definitive Fix for all Data Loading and MultiIndex Errors ---
             all_tickers_daily_data = yf.download(
-                [self.ticker] + self.external_tickers,
-                period=self.period,
-                interval="1d",
-                auto_adjust=True,
-                group_by='ticker'
+                [self.ticker] + self.external_tickers, period=self.period,
+                interval="1d", auto_adjust=True, group_by='ticker'
             )
             if all_tickers_daily_data.empty: raise ValueError("No daily data for tickers")
 
             df_primary_hf = yf.download(
-                self.ticker,
-                period=self.period,
-                interval=self.interval,
-                auto_adjust=True
+                self.ticker, period=self.period, interval=self.interval, auto_adjust=True
             )
             if df_primary_hf.empty: raise ValueError(f"No high-frequency data for {self.ticker}")
 
@@ -114,16 +129,16 @@ class ForexAI:
                 df_external[ext_ticker] = all_tickers_daily_data[ext_ticker]['Close'].ffill()
             df_external.rename(columns={"DX-Y.NYB": "DXY", "GC=F": "GOLD", "^TNX": "TNX"}, inplace=True)
             
+            if isinstance(df_primary_hf.columns, pd.MultiIndex):
+                df_primary_hf.columns = df_primary_hf.columns.get_level_values(0)
             df_primary_hf.columns = [col.capitalize() for col in df_primary_hf.columns]
+            
             df_primary_hf.index = pd.to_datetime(df_primary_hf.index).tz_localize(None)
             df_external.index = pd.to_datetime(df_external.index).tz_localize(None)
             
             self.data = pd.merge_asof(
-                left=df_primary_hf.sort_index(),
-                right=df_external.sort_index(),
-                left_index=True,
-                right_index=True,
-                direction='backward'
+                left=df_primary_hf.sort_index(), right=df_external.sort_index(),
+                left_index=True, right_index=True, direction='backward'
             )
             self.data.index.name = 'Date'
             
@@ -131,11 +146,11 @@ class ForexAI:
             print("   Data loaded and cached successfully.")
 
         except Exception as e:
-            print(f"   Error loading data: {e}")
+            print(f"   An error occurred during data loading: {e}")
             raise
 
     def engineer_features(self):
-        """Builds a rich set of predictive features including inter-market data."""
+        """Builds a rich set of predictive features using stable, direct methods."""
         if self.data is None: raise ValueError("Data not loaded.")
         print("2. Engineering intelligent features...")
         df = self.data
@@ -143,8 +158,6 @@ class ForexAI:
         for col in ["DXY", "GOLD", "TNX"]:
             if col in df.columns:
                 df[f'{col}_PCT_CHANGE'] = df[col].pct_change().fillna(0)
-            else:
-                print(f"Warning: Column {col} not found in data. Skipping.")
         
         df = self._calculate_technical_indicators(df)
         df = self._identify_candlestick_patterns(df)
@@ -177,14 +190,14 @@ class ForexAI:
         patterns = ['CDL_ENGULFING', 'CDL_HAMMER', 'CDL_HANGINGMAN', 'CDL_SHOOTINGSTAR']
         interactions = ['Hammer_In_Oversold', 'Engulfing_At_High_ATR']
         intermarket = ['DXY_PCT_CHANGE', 'GOLD_PCT_CHANGE', 'TNX_PCT_CHANGE']
-        
         base_features = ['ATR_14', 'RSI_14', 'MACD_12_26_9', 'MACDh_12_26_9', 'MACDs_12_26_9', 'Above_Daily_SMA200']
+        
         self.features = [f for f in (base_features + patterns + interactions + intermarket) if f in self.data.columns]
         
         X = self.data[self.features]
         y = self.data['Target']
         
-        if len(X) < 200: raise ValueError(f"Not enough data samples ({len(X)}) to perform model tuning.")
+        if len(X) < 200: raise ValueError(f"Not enough data samples ({len(X)}) for model tuning.")
 
         tscv = TimeSeriesSplit(n_splits=5)
         print("   Searching for optimal model parameters (this may take a minute)...")
@@ -227,8 +240,7 @@ class ForexAI:
         """
         if self.model is None: raise ValueError("Model not ready. Please train or load a model first.")
 
-        # Always load fresh data and engineer features for a new prediction
-        self.load_data() 
+        self.load_data()
         self.engineer_features()
 
         print("\n" + "="*50)
@@ -256,7 +268,7 @@ class ForexAI:
         
         shap.initjs()
         # Definitive fix for the SHAP plotting error
-        shap.force_plot(self.explainer.expected_value[1], shap_values[1], last_row_features, matplotlib=True, show=False)
+        shap.force_plot(self.explainer.expected_value[1], shap_values[1][0,:], last_row_features, matplotlib=True, show=False)
         plt.title(f"AI Reasoning for {self.ticker} Prediction")
         plt.tight_layout()
         plt.show(block=True)
@@ -268,8 +280,6 @@ class ForexAI:
 
 # --- MAIN EXECUTION ---
 if __name__ == "__main__":
-    # --- This is where you configure the AI for your app ---
-    # The user selects these in the app, and they get passed here.
     TARGET_TICKER = "GBPUSD=X"
     TARGET_INTERVAL = "1h"
     
@@ -277,9 +287,7 @@ if __name__ == "__main__":
     try:
         ai_bot = ForexAI(ticker=TARGET_TICKER, interval=TARGET_INTERVAL)
         
-        # In a real app, you would always try to load first.
         if not ai_bot.load_model():
-            # If no model exists for this specific ticker/interval, train one.
             print("\n   No pre-trained model found. Starting full training workflow...")
             ai_bot.load_data()
             ai_bot.engineer_features()
@@ -287,7 +295,6 @@ if __name__ == "__main__":
             ai_bot.tune_and_train()
             ai_bot.save_model()
         
-        # Whether the model was loaded or just trained, get the latest prediction.
         ai_bot.predict_and_explain()
 
     except Exception as e:
