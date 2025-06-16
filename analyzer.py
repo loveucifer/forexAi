@@ -81,10 +81,13 @@ class ForexAI:
         Identifies key candlestick patterns using pure Pandas, based on book definitions.
         """
         print("   Identifying candlestick patterns...")
+        
+        # Engulfing (Bullish/Bearish)
         is_bullish_engulfing = (df['Close'] > df['Open']) & (df['Close'].shift(1) < df['Open'].shift(1)) & (df['Open'] < df['Close'].shift(1)) & (df['Close'] > df['Open'].shift(1))
         is_bearish_engulfing = (df['Close'] < df['Open']) & (df['Close'].shift(1) > df['Open'].shift(1)) & (df['Open'] > df['Close'].shift(1)) & (df['Close'] < df['Open'].shift(1))
         df['CDL_ENGULFING'] = np.select([is_bullish_engulfing, is_bearish_engulfing], [100, -100], default=0)
 
+        # Hammer and Hanging Man
         body_size = abs(df['Close'] - df['Open'])
         lower_shadow = df['Open'].combine_first(df['Close']) - df['Low']
         upper_shadow = df['High'] - df['Close'].combine_first(df['Open'])
@@ -94,9 +97,11 @@ class ForexAI:
         df['CDL_HAMMER'] = is_hammer.astype(int) * 100
         df['CDL_HANGINGMAN'] = is_hangingman.astype(int) * -100
         
+        # Shooting Star
         is_shootingstar_shape = (upper_shadow > body_size * 2) & (lower_shadow < body_size * 0.8)
         is_shootingstar = is_shootingstar_shape & (df['Close'].shift(1) > df['Open'].shift(1))
         df['CDL_SHOOTINGSTAR'] = is_shootingstar.astype(int) * -100
+        
         return df
 
     def load_data(self):
@@ -159,8 +164,11 @@ class ForexAI:
             if col in df.columns:
                 df[f'{col}_PCT_CHANGE'] = df[col].pct_change().fillna(0)
         
-        df = self._calculate_technical_indicators(df)
-        df = self._identify_candlestick_patterns(df)
+        # --- Definitive fix for the KeyError ---
+        # Call the helper functions to modify the dataframe 'df' in place.
+        # This ensures the columns are added before they are used.
+        self._calculate_technical_indicators(df)
+        self._identify_candlestick_patterns(df)
 
         print("   Creating contextual interaction features...")
         if 'CDL_HAMMER' in df.columns and 'RSI_14' in df.columns:
@@ -268,7 +276,7 @@ class ForexAI:
         
         shap.initjs()
         # Definitive fix for the SHAP plotting error
-        shap.force_plot(self.explainer.expected_value[1], shap_values[1][0,:], last_row_features, matplotlib=True, show=False)
+        shap.force_plot(self.explainer.expected_value[1], shap_values[1], last_row_features, matplotlib=True, show=False)
         plt.title(f"AI Reasoning for {self.ticker} Prediction")
         plt.tight_layout()
         plt.show(block=True)
