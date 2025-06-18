@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 print("--- Loading Pre-trained Model and Data ---")
 try:
     # Make sure to load the V2 model
-    model = tf.keras.models.load_model("flux_trade_model_v2.keras")
+    model = tf.keras.models.load_model("flux_trade_model_v5.keras")
 except IOError:
     print("\n[ERROR] 'flux_trade_model_v2.keras' not found.")
     print("Please run 'train_model.py' first to create the model file.")
